@@ -1,0 +1,45 @@
+{
+  "title": "PubliBike Stations",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select PubliBike station",
+        "description": "Enter part of the station name (or city/address) to search.",
+        "data": {
+          "station_name": "Station name"
+        }
+      },
+      "select_station": {
+        "title": "Choose station",
+        "description": "Multiple stations matched your search. Please choose one.",
+        "data": {
+          "station_id": "Station"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to PubliBike API",
+      "no_stations_found": "No stations found matching your input"
+    },
+    "abort": {
+      "already_configured": "This station is already configured"
+    }
+  },
+  "options": {
+    "step": {
+      "search": {
+        "title": "Change station",
+        "description": "Enter part of the station name (or city/address) to search.",
+        "data": {
+          "station_name": "Station name"
+        }
+      },
+      "pick": {
+        "title": "Choose station",
+        "data": {
+          "station_id": "Station"
+        }
+      }
+    }
+  }
+}
