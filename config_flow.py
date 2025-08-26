@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers import selector as sel
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
@@ -102,10 +101,19 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_select_station(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
+        # Build user-friendly option labels mapped to IDs
+        options_map: Dict[str, int] = {}
+        for s in self._matches:
+            sid = int(s.get("id"))
+            label = f'{s.get("name","")} — {s.get("city","")} (#{sid})'
+            options_map[label] = sid
+
         if user_input is not None:
-            chosen_id = int(user_input["station_id"])
+            chosen_label = user_input["station_id"]
+            chosen_id = options_map.get(chosen_label)
             station = next((s for s in self._matches if int(s.get("id")) == chosen_id), None)
             if station is None:
+                # go back to search if something went wrong
                 return await self.async_step_user()
             unique_id = str(station["id"])
             await self.async_set_unique_id(unique_id)
@@ -120,21 +128,10 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 },
             )
 
-        # Build selector options
-        options = []
-        for s in self._matches:
-            sid = int(s.get("id"))
-            label = f'{s.get("name","")} — {s.get("city","")} (#{sid})'
-            options.append({"value": sid, "label": label})
-
         data_schema = vol.Schema(
             {
-                vol.Required("station_id"): sel.SelectSelector(
-                    sel.SelectSelectorConfig(
-                        options=options,
-                        mode=sel.SelectSelectorMode.DROPDOWN,
-                    )
-                )
+                # Use vol.In for a widely-supported dropdown
+                vol.Required("station_id"): vol.In(list(options_map.keys()))
             }
         )
         return self.async_show_form(step_id="select_station", data_schema=data_schema)
@@ -178,29 +175,29 @@ class PublibikeOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="search", data_schema=schema, errors=errors)
 
     async def async_step_pick(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
+        # Build user-friendly option labels mapped to IDs
+        options_map: Dict[str, int] = {}
+        for s in self._matches:
+            sid = int(s.get("id"))
+            label = f'{s.get("name","")} — {s.get("city","")} (#{sid})'
+            options_map[label] = sid
+
         if user_input is not None:
-            station_id = int(user_input["station_id"])
+            label = user_input["station_id"]
+            station_id = options_map.get(label)
             station = next((s for s in self._matches if int(s.get("id")) == station_id), None)
             if station:
                 return await self._finish_with_station(station)
             return await self.async_step_search()
 
-        options = []
-        for s in self._matches:
-            sid = int(s.get("id"))
-            label = f'{s.get("name","")} — {s.get("city","")} (#{sid})'
-            options.append({"value": sid, "label": label})
         schema = vol.Schema(
             {
-                vol.Required("station_id"): sel.SelectSelector(
-                    sel.SelectSelectorConfig(options=options, mode=sel.SelectSelectorMode.DROPDOWN)
-                )
+                vol.Required("station_id"): vol.In(list(options_map.keys()))
             }
         )
         return self.async_show_form(step_id="pick", data_schema=schema)
 
     async def _finish_with_station(self, station: Dict[str, Any]) -> FlowResult:
-        # Update entry data
         data = {
             **self.config_entry.data,
             CONF_STATION_ID: station["id"],
