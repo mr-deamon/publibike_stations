@@ -1,12 +1,12 @@
 {
   "domain": "publibike_stations",
   "name": "PubliBike Stations",
-  "version": "0.1.0",
-  "documentation": "https://github.com/mr-deamon/publibike-stations",
-  "issue_tracker": "https://github.com/mr-deamon/publibike-stations/issues",
-  "config_flow": true,
   "codeowners": ["@mr-deamon"],
+  "config_flow": true,
+  "documentation": "https://github.com/mr-deamon/publibike-stations",
+  "integration_type": "device",
   "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/mr-deamon/publibike-stations/issues",
   "requirements": [],
-  "integration_type": "device"
+  "version": "1.0.0"
 }
