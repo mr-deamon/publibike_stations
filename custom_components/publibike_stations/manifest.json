@@ -1,5 +1,5 @@
 {
-  "domain": "publibike_stations",
+  "domain": "publibike",
   "name": "PubliBike Stations",
   "codeowners": ["@mr-deamon"],
   "config_flow": true,

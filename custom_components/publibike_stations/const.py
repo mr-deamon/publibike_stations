@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-DOMAIN = "publibike_stations"
+DOMAIN = "publibike"
 
 API_BASE = "https://rest.publibike.ch/v1/public"
 API_ALL_STATIONS = f"{API_BASE}/all/stations"
