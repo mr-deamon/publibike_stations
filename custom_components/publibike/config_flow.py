@@ -12,9 +12,13 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     API_ALL_STATIONS,
     CONF_STATION_CITY,
+    CONF_STATION_DETAILS_URL,
     CONF_STATION_ID,
     CONF_STATION_NAME,
+    CONF_STATION_SOURCE,
     DOMAIN,
+    STATION_SOURCE_PUBLIBIKE,
+    STATION_SOURCE_VELOSPOT,
 )
 
 
@@ -23,9 +27,49 @@ async def _fetch_all_stations(hass: HomeAssistant) -> List[Dict[str, Any]]:
     async with session.get(API_ALL_STATIONS, headers={"Accept": "application/json"}) as resp:
         resp.raise_for_status()
         data = await resp.json()
-        # Expected top-level under "publibike" -> "stations"
-        stations = (data or {}).get("publibike", {}).get("stations", [])
-        return stations or []
+        payload = data or {}
+        legacy = (payload.get("publibike") or {}).get("stations") or []
+        velospot = (payload.get("velospot") or {}).get("responseData") or []
+
+        stations: List[Dict[str, Any]] = []
+        for item in legacy:
+            station_id = str(item.get("id") or "").strip()
+            if not station_id:
+                continue
+            stations.append(
+                {
+                    "id": station_id,
+                    "name": (item.get("name") or "").strip() or station_id,
+                    "address": (item.get("address") or "").strip(),
+                    "city": (item.get("city") or "").strip(),
+                    "source": STATION_SOURCE_PUBLIBIKE,
+                    "details_url": None,
+                }
+            )
+
+        for item in velospot:
+            station_id = str(item.get("station_id") or "").strip()
+            if not station_id:
+                continue
+            stations.append(
+                {
+                    "id": station_id,
+                    "name": (item.get("station_name") or "").strip() or station_id,
+                    "address": (item.get("station_address") or "").strip(),
+                    "city": "",
+                    "source": STATION_SOURCE_VELOSPOT,
+                    "details_url": (item.get("detailsRoute") or "").strip() or None,
+                }
+            )
+
+        return stations
+
+
+def _display_name(station: Dict[str, Any]) -> str:
+    name = (station.get("name") or "").strip() or str(station.get("id") or "")
+    if station.get("source") == STATION_SOURCE_PUBLIBIKE:
+        return f"{name} (legacy)"
+    return name
 
 
 def _search_matches(stations: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
@@ -68,7 +112,7 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     errors["base"] = "no_stations_found"
                 elif len(matches) == 1:
                     station = matches[0]
-                    unique_id = str(station["id"])
+                    unique_id = f'{station.get("source") or STATION_SOURCE_PUBLIBIKE}:{station["id"]}'
                     await self.async_set_unique_id(unique_id)
                     self._abort_if_unique_id_configured()
                     title = f'{station.get("name") or unique_id} ({station.get("city","")})'.strip()
@@ -78,6 +122,8 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                             CONF_STATION_ID: station["id"],
                             CONF_STATION_NAME: station.get("name") or str(station["id"]),
                             CONF_STATION_CITY: station.get("city") or "",
+                            CONF_STATION_SOURCE: station.get("source") or STATION_SOURCE_PUBLIBIKE,
+                            CONF_STATION_DETAILS_URL: station.get("details_url"),
                         },
                     )
                 else:
@@ -102,20 +148,29 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_select_station(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         # Build user-friendly option labels mapped to IDs
-        options_map: Dict[str, int] = {}
+        options_map: Dict[str, str] = {}
         for s in self._matches:
-            sid = int(s.get("id"))
-            label = f'{s.get("name","")} — {s.get("city","")} (#{sid})'
-            options_map[label] = sid
+            sid = str(s.get("id"))
+            source = str(s.get("source") or STATION_SOURCE_PUBLIBIKE)
+            city = (s.get("city") or "").strip()
+            label = f'{_display_name(s)} — {city} (#{sid})' if city else f'{_display_name(s)} (#{sid})'
+            options_map[label] = f"{source}:{sid}"
 
         if user_input is not None:
             chosen_label = user_input["station_id"]
-            chosen_id = options_map.get(chosen_label)
-            station = next((s for s in self._matches if int(s.get("id")) == chosen_id), None)
+            chosen_key = options_map.get(chosen_label)
+            station = next(
+                (
+                    s
+                    for s in self._matches
+                    if f'{s.get("source") or STATION_SOURCE_PUBLIBIKE}:{str(s.get("id"))}' == chosen_key
+                ),
+                None,
+            )
             if station is None:
                 # go back to search if something went wrong
                 return await self.async_step_user()
-            unique_id = str(station["id"])
+            unique_id = f'{station.get("source") or STATION_SOURCE_PUBLIBIKE}:{station["id"]}'
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
             title = f'{station.get("name") or unique_id} ({station.get("city","")})'.strip()
@@ -125,6 +180,8 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_STATION_ID: station["id"],
                     CONF_STATION_NAME: station.get("name") or str(station["id"]),
                     CONF_STATION_CITY: station.get("city") or "",
+                    CONF_STATION_SOURCE: station.get("source") or STATION_SOURCE_PUBLIBIKE,
+                    CONF_STATION_DETAILS_URL: station.get("details_url"),
                 },
             )
 
@@ -176,16 +233,25 @@ class PublibikeOptionsFlowHandler(config_entries.OptionsFlow):
 
     async def async_step_pick(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         # Build user-friendly option labels mapped to IDs
-        options_map: Dict[str, int] = {}
+        options_map: Dict[str, str] = {}
         for s in self._matches:
-            sid = int(s.get("id"))
-            label = f'{s.get("name","")} — {s.get("city","")} (#{sid})'
-            options_map[label] = sid
+            sid = str(s.get("id"))
+            source = str(s.get("source") or STATION_SOURCE_PUBLIBIKE)
+            city = (s.get("city") or "").strip()
+            label = f'{_display_name(s)} — {city} (#{sid})' if city else f'{_display_name(s)} (#{sid})'
+            options_map[label] = f"{source}:{sid}"
 
         if user_input is not None:
             label = user_input["station_id"]
-            station_id = options_map.get(label)
-            station = next((s for s in self._matches if int(s.get("id")) == station_id), None)
+            station_key = options_map.get(label)
+            station = next(
+                (
+                    s
+                    for s in self._matches
+                    if f'{s.get("source") or STATION_SOURCE_PUBLIBIKE}:{str(s.get("id"))}' == station_key
+                ),
+                None,
+            )
             if station:
                 return await self._finish_with_station(station)
             return await self.async_step_search()
@@ -203,6 +269,8 @@ class PublibikeOptionsFlowHandler(config_entries.OptionsFlow):
             CONF_STATION_ID: station["id"],
             CONF_STATION_NAME: station.get("name") or str(station["id"]),
             CONF_STATION_CITY: station.get("city") or "",
+            CONF_STATION_SOURCE: station.get("source") or STATION_SOURCE_PUBLIBIKE,
+            CONF_STATION_DETAILS_URL: station.get("details_url"),
         }
         return self.async_create_entry(title="", data=data)
 
