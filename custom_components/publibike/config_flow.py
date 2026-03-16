@@ -72,6 +72,14 @@ def _display_name(station: Dict[str, Any]) -> str:
     return name
 
 
+def _entry_title(station: Dict[str, Any]) -> str:
+    name = (station.get("name") or "").strip() or str(station.get("id") or "")
+    city = (station.get("city") or "").strip()
+    if city:
+        return f"{name} ({city})"
+    return name
+
+
 def _search_matches(stations: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
     q = query.strip().casefold()
     if not q:
@@ -115,7 +123,7 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     unique_id = f'{station.get("source") or STATION_SOURCE_PUBLIBIKE}:{station["id"]}'
                     await self.async_set_unique_id(unique_id)
                     self._abort_if_unique_id_configured()
-                    title = f'{station.get("name") or unique_id} ({station.get("city","")})'.strip()
+                    title = _entry_title(station)
                     return self.async_create_entry(
                         title=title,
                         data={
@@ -173,7 +181,7 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             unique_id = f'{station.get("source") or STATION_SOURCE_PUBLIBIKE}:{station["id"]}'
             await self.async_set_unique_id(unique_id)
             self._abort_if_unique_id_configured()
-            title = f'{station.get("name") or unique_id} ({station.get("city","")})'.strip()
+            title = _entry_title(station)
             return self.async_create_entry(
                 title=title,
                 data={
