@@ -37,7 +37,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
     device_info = DeviceInfo(
         identifiers={(DOMAIN, f"station_{station_id}")},
-        name=f"{station_name} ({station_city})" if station_city else station_name,
+        name=(
+            f"{station_name} ({station_city})"
+            if station_city
+            else station_name
+        )
+        + (" (legacy)" if station_source == STATION_SOURCE_PUBLIBIKE else ""),
         manufacturer="PubliBike",
         model="Station",
         configuration_url=configuration_url,

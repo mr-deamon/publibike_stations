@@ -32,6 +32,13 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 
+def _to_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 class PublibikeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def __init__(
         self,
@@ -81,9 +88,10 @@ class PublibikeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"Station not found in API response: {self.station_source}:{self._station_id}")
 
         if self.station_source == STATION_SOURCE_VELOSPOT:
-            bikes = int(station.get("totalNonElectricalBike") or 0)
-            ebikes = int(station.get("totalElectricalBike") or 0)
-            state_name = "Unknown"
+            bikes = _to_int(station.get("totalNonElectricalBike"))
+            ebikes = _to_int(station.get("totalElectricalBike"))
+            total_bikes = _to_int(station.get("totalBike"))
+            state_name = "Active" if total_bikes > 0 else "Empty"
             normalized_station = {
                 "id": self._station_id,
                 "name": station.get("station_name") or self.station_name,
