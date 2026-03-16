@@ -8,6 +8,8 @@ This custom integration adds availability sensors for a single PubliBike station
 
 - Interactive setup flow:
   - Type part of the station name, city, or address to search.
+  - Search includes stations from both the new Velospot response and legacy PubliBike stations.
+  - Legacy PubliBike stations are shown with a `(legacy)` suffix in the selection list.
   - If multiple stations match (e.g., “Bahnhof”), pick the right one from a dropdown.
 - Sensors provided:
   - Bikes available
@@ -54,7 +56,10 @@ Tip: You can later change the station via the integration’s “Configure” op
 
 - Search API:
   - GET https://rest.publibike.ch/v1/public/all/stations
-  - Used during setup/options to find your station by name.
+  - Used during setup/options to find your station by name across:
+    - `velospot.responseData` (new)
+    - `publibike.stations` (legacy, labeled `(legacy)` in search results)
+  - Background on this transition: [Net Harmonization](https://www.publibike.ch/en/net-harmonization)
 - Station detail API (polled every 5 minutes):
   - GET https://rest.publibike.ch/v1/public/stations/[STATIONID]
   - Used to determine:

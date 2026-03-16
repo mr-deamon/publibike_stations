@@ -11,22 +11,41 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import PublibikeCoordinator
-from .const import CONF_STATION_CITY, CONF_STATION_ID, CONF_STATION_NAME, DOMAIN
+from .const import (
+    CONF_STATION_CITY,
+    CONF_STATION_DETAILS_URL,
+    CONF_STATION_ID,
+    CONF_STATION_NAME,
+    CONF_STATION_SOURCE,
+    DOMAIN,
+    STATION_SOURCE_PUBLIBIKE,
+)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: PublibikeCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    station_id = int(entry.data[CONF_STATION_ID])
-    station_name = entry.data.get(CONF_STATION_NAME, str(station_id))
+    station_id = str(entry.data[CONF_STATION_ID])
+    station_name = entry.data.get(CONF_STATION_NAME, station_id)
     station_city = entry.data.get(CONF_STATION_CITY, "")
+    station_source = entry.data.get(CONF_STATION_SOURCE, STATION_SOURCE_PUBLIBIKE)
+    station_details_url = entry.data.get(CONF_STATION_DETAILS_URL)
+
+    configuration_url = station_details_url
+    if not configuration_url and station_source == STATION_SOURCE_PUBLIBIKE:
+        configuration_url = f"https://rest.publibike.ch/v1/public/stations/{station_id}"
 
     device_info = DeviceInfo(
         identifiers={(DOMAIN, f"station_{station_id}")},
-        name=f"{station_name} ({station_city})" if station_city else station_name,
+        name=(
+            f"{station_name} ({station_city})"
+            if station_city
+            else station_name
+        )
+        + (" (legacy)" if station_source == STATION_SOURCE_PUBLIBIKE else ""),
         manufacturer="PubliBike",
         model="Station",
-        configuration_url=f"https://www.publibike.ch/en/stations/{station_id}",
+        configuration_url=configuration_url,
     )
 
     entities: list[SensorEntity] = [
@@ -38,7 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 
 
 class PublibikeBaseEntity(CoordinatorEntity[PublibikeCoordinator], SensorEntity):
-    def __init__(self, coordinator: PublibikeCoordinator, key: str, name: str, device_info: DeviceInfo, station_id: int) -> None:
+    def __init__(self, coordinator: PublibikeCoordinator, key: str, name: str, device_info: DeviceInfo, station_id: str) -> None:
         super().__init__(coordinator)
         self._attr_has_entity_name = True
         self._key = key
@@ -62,7 +81,7 @@ class PublibikeBaseEntity(CoordinatorEntity[PublibikeCoordinator], SensorEntity)
 
 
 class PublibikeCountSensor(PublibikeBaseEntity):
-    def __init__(self, coordinator: PublibikeCoordinator, key: str, name: str, count_key: str, device_info: DeviceInfo, station_id: int) -> None:
+    def __init__(self, coordinator: PublibikeCoordinator, key: str, name: str, count_key: str, device_info: DeviceInfo, station_id: str) -> None:
         super().__init__(coordinator, key, name, device_info, station_id)
         self._count_key = count_key
         self._attr_state_class = SensorStateClass.MEASUREMENT
@@ -75,7 +94,7 @@ class PublibikeCountSensor(PublibikeBaseEntity):
 
 
 class PublibikeStateSensor(PublibikeBaseEntity):
-    def __init__(self, coordinator: PublibikeCoordinator, key: str, name: str, device_info: DeviceInfo, station_id: int) -> None:
+    def __init__(self, coordinator: PublibikeCoordinator, key: str, name: str, device_info: DeviceInfo, station_id: str) -> None:
         super().__init__(coordinator, key, name, device_info, station_id)
         # No device_class; keep plain text
 

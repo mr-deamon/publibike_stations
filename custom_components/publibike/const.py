@@ -11,3 +11,8 @@ DEFAULT_UPDATE_INTERVAL_SECONDS = 300  # 5 minutes
 CONF_STATION_ID = "station_id"
 CONF_STATION_NAME = "station_name"
 CONF_STATION_CITY = "station_city"
+CONF_STATION_SOURCE = "station_source"
+CONF_STATION_DETAILS_URL = "station_details_url"
+
+STATION_SOURCE_PUBLIBIKE = "publibike"
+STATION_SOURCE_VELOSPOT = "velospot"
