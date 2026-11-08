@@ -25,11 +25,12 @@ from .const import (
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator: PublibikeCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    station_id = str(entry.data[CONF_STATION_ID])
-    station_name = entry.data.get(CONF_STATION_NAME, station_id)
-    station_city = entry.data.get(CONF_STATION_CITY, "")
-    station_source = entry.data.get(CONF_STATION_SOURCE, STATION_SOURCE_PUBLIBIKE)
-    station_details_url = entry.data.get(CONF_STATION_DETAILS_URL)
+    entry_data = {**entry.data, **entry.options}
+    station_id = str(entry_data[CONF_STATION_ID])
+    station_name = entry_data.get(CONF_STATION_NAME, station_id)
+    station_city = entry_data.get(CONF_STATION_CITY, "")
+    station_source = entry_data.get(CONF_STATION_SOURCE, STATION_SOURCE_PUBLIBIKE)
+    station_details_url = entry_data.get(CONF_STATION_DETAILS_URL)
 
     configuration_url = station_details_url
     if not configuration_url and station_source == STATION_SOURCE_PUBLIBIKE:

@@ -5,12 +5,11 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 import voluptuous as vol
 from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .api import async_get_station_payload
 from .const import (
-    API_ALL_STATIONS,
     CONF_STATION_CITY,
     CONF_STATION_DETAILS_URL,
     CONF_STATION_ID,
@@ -23,46 +22,42 @@ from .const import (
 
 
 async def _fetch_all_stations(hass: HomeAssistant) -> List[Dict[str, Any]]:
-    session = async_get_clientsession(hass)
-    async with session.get(API_ALL_STATIONS, headers={"Accept": "application/json"}) as resp:
-        resp.raise_for_status()
-        data = await resp.json()
-        payload = data or {}
-        legacy = (payload.get("publibike") or {}).get("stations") or []
-        velospot = (payload.get("velospot") or {}).get("responseData") or []
+    payload = await async_get_station_payload(hass)
+    legacy = (payload.get("publibike") or {}).get("stations") or []
+    velospot = (payload.get("velospot") or {}).get("responseData") or []
 
-        stations: List[Dict[str, Any]] = []
-        for item in legacy:
-            station_id = str(item.get("id") or "").strip()
-            if not station_id:
-                continue
-            stations.append(
-                {
-                    "id": station_id,
-                    "name": (item.get("name") or "").strip() or station_id,
-                    "address": (item.get("address") or "").strip(),
-                    "city": (item.get("city") or "").strip(),
-                    "source": STATION_SOURCE_PUBLIBIKE,
-                    "details_url": None,
-                }
-            )
+    stations: List[Dict[str, Any]] = []
+    for item in legacy:
+        station_id = str(item.get("id") or "").strip()
+        if not station_id:
+            continue
+        stations.append(
+            {
+                "id": station_id,
+                "name": (item.get("name") or "").strip() or station_id,
+                "address": (item.get("address") or "").strip(),
+                "city": (item.get("city") or "").strip(),
+                "source": STATION_SOURCE_PUBLIBIKE,
+                "details_url": None,
+            }
+        )
 
-        for item in velospot:
-            station_id = str(item.get("station_id") or "").strip()
-            if not station_id:
-                continue
-            stations.append(
-                {
-                    "id": station_id,
-                    "name": (item.get("station_name") or "").strip() or station_id,
-                    "address": (item.get("station_address") or "").strip(),
-                    "city": "",
-                    "source": STATION_SOURCE_VELOSPOT,
-                    "details_url": (item.get("detailsRoute") or "").strip() or None,
-                }
-            )
+    for item in velospot:
+        station_id = str(item.get("station_id") or "").strip()
+        if not station_id:
+            continue
+        stations.append(
+            {
+                "id": station_id,
+                "name": (item.get("station_name") or "").strip() or station_id,
+                "address": (item.get("station_address") or "").strip(),
+                "city": "",
+                "source": STATION_SOURCE_VELOSPOT,
+                "details_url": (item.get("detailsRoute") or "").strip() or None,
+            }
+        )
 
-        return stations
+    return stations
 
 
 def _display_name(station: Dict[str, Any]) -> str:
@@ -78,6 +73,20 @@ def _entry_title(station: Dict[str, Any]) -> str:
     if city:
         return f"{name} ({city})"
     return name
+
+
+def _station_is_configured(
+    hass: HomeAssistant, unique_id: str, exclude_entry_id: str | None = None
+) -> bool:
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.entry_id == exclude_entry_id:
+            continue
+        entry_data = {**entry.data, **entry.options}
+        station_source = entry_data.get(CONF_STATION_SOURCE, STATION_SOURCE_PUBLIBIKE)
+        station_id = str(entry_data.get(CONF_STATION_ID, ""))
+        if f"{station_source}:{station_id}" == unique_id:
+            return True
+    return False
 
 
 def _search_matches(stations: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
@@ -104,6 +113,13 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._matches: List[Dict[str, Any]] = []
         self._last_query: str | None = None
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(
+        config_entry: config_entries.ConfigEntry,
+    ) -> PublibikeOptionsFlowHandler:
+        return PublibikeOptionsFlowHandler()
+
     async def async_step_user(self, user_input: Optional[Dict[str, Any]] = None) -> FlowResult:
         errors: Dict[str, str] = {}
 
@@ -121,8 +137,8 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 elif len(matches) == 1:
                     station = matches[0]
                     unique_id = f'{station.get("source") or STATION_SOURCE_PUBLIBIKE}:{station["id"]}'
-                    await self.async_set_unique_id(unique_id)
-                    self._abort_if_unique_id_configured()
+                    if _station_is_configured(self.hass, unique_id):
+                        return self.async_abort(reason="already_configured")
                     title = _entry_title(station)
                     return self.async_create_entry(
                         title=title,
@@ -179,8 +195,8 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 # go back to search if something went wrong
                 return await self.async_step_user()
             unique_id = f'{station.get("source") or STATION_SOURCE_PUBLIBIKE}:{station["id"]}'
-            await self.async_set_unique_id(unique_id)
-            self._abort_if_unique_id_configured()
+            if _station_is_configured(self.hass, unique_id):
+                return self.async_abort(reason="already_configured")
             title = _entry_title(station)
             return self.async_create_entry(
                 title=title,
@@ -206,9 +222,8 @@ class PublibikeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return await self.async_step_user()
 
 
-class PublibikeOptionsFlowHandler(config_entries.OptionsFlow):
-    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = config_entry
+class PublibikeOptionsFlowHandler(config_entries.OptionsFlowWithReload):
+    def __init__(self) -> None:
         self._matches: List[Dict[str, Any]] = []
         self._last_query: str | None = None
 
@@ -272,16 +287,20 @@ class PublibikeOptionsFlowHandler(config_entries.OptionsFlow):
         return self.async_show_form(step_id="pick", data_schema=schema)
 
     async def _finish_with_station(self, station: Dict[str, Any]) -> FlowResult:
+        source = station.get("source") or STATION_SOURCE_PUBLIBIKE
+        station_id = str(station["id"])
+        unique_id = f"{source}:{station_id}"
+        if _station_is_configured(self.hass, unique_id, self.config_entry.entry_id):
+            return self.async_abort(reason="already_configured")
+
+        self.hass.config_entries.async_update_entry(
+            self.config_entry, title=_entry_title(station)
+        )
         data = {
-            **self.config_entry.data,
-            CONF_STATION_ID: station["id"],
+            CONF_STATION_ID: station_id,
             CONF_STATION_NAME: station.get("name") or str(station["id"]),
             CONF_STATION_CITY: station.get("city") or "",
-            CONF_STATION_SOURCE: station.get("source") or STATION_SOURCE_PUBLIBIKE,
+            CONF_STATION_SOURCE: source,
             CONF_STATION_DETAILS_URL: station.get("details_url"),
         }
         return self.async_create_entry(title="", data=data)
-
-
-async def async_get_options_flow(config_entry: config_entries.ConfigEntry) -> PublibikeOptionsFlowHandler:
-    return PublibikeOptionsFlowHandler(config_entry)

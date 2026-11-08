@@ -24,11 +24,11 @@ See below for examples, troubleshooting, and notes.
 
 ## Installation
 
-You can install manually or as a custom repository in HACS.
+On Home Assistant 2026.11 and newer, install from **Settings > Marketplace**. On older versions, use HACS or install manually.
 
 ### Manual installation
 
-1. Copy the `custom_components/publibike_stations` folder into your Home Assistant `custom_components` directory.
+1. Copy the `custom_components/publibike` folder into your Home Assistant `custom_components` directory.
 2. Restart Home Assistant.
 
 ### HACS (Custom repository)
@@ -54,20 +54,15 @@ Tip: You can later change the station via the integration’s “Configure” op
 
 ## Configuration and data sources
 
-- Search API:
+- API:
   - GET https://rest.publibike.ch/v1/public/all/stations
-  - Used during setup/options to find your station by name across:
+  - Used during setup, options, and polling. Polling reads the selected station from this shared response every 5 minutes. Requests made within 30 seconds share one response.
+  - Station search includes:
     - `velospot.responseData` (new)
     - `publibike.stations` (legacy, labeled `(legacy)` in search results)
   - Background on this transition: [Net Harmonization](https://www.publibike.ch/en/net-harmonization)
-- Station detail API (polled every 5 minutes):
-  - GET https://rest.publibike.ch/v1/public/stations/[STATIONID]
-  - Used to determine:
-    - Bikes available
-    - E-bikes available
-    - Station state
 
-E-bikes are detected from the vehicle type information provided by the API.
+Velospot's `detailsRoute` is a web page, not a JSON API. Counts come from the all-stations response; legacy PubliBike e-bikes are counted from vehicle type information.
 
 ## Entities created
 

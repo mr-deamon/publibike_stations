@@ -9,14 +9,13 @@ from aiohttp import ClientError
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     UpdateFailed,
 )
 
+from .api import async_get_station_payload
 from .const import (
-    API_ALL_STATIONS,
     CONF_STATION_CITY,
     CONF_STATION_ID,
     CONF_STATION_NAME,
@@ -52,7 +51,6 @@ class PublibikeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.station_name = station_name
         self.station_city = station_city
         self.station_source = station_source
-        self.session = async_get_clientsession(hass)
         super().__init__(
             hass,
             _LOGGER,
@@ -61,17 +59,11 @@ class PublibikeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
     async def _async_update_data(self) -> dict[str, Any]:
-        url = API_ALL_STATIONS
         try:
-            async with self.session.get(url, headers={"Accept": "application/json"}) as resp:
-                if resp.status != 200:
-                    text = await resp.text()
-                    raise UpdateFailed(f"HTTP {resp.status} from PubliBike API: {text}")
-                data = await resp.json()
+            payload = await async_get_station_payload(self.hass)
         except (asyncio.TimeoutError, ClientError) as err:
             raise UpdateFailed(f"Error communicating with PubliBike API: {err}") from err
 
-        payload = data or {}
         station: dict[str, Any] | None = None
         if self.station_source == STATION_SOURCE_VELOSPOT:
             for item in (payload.get("velospot") or {}).get("responseData") or []:
@@ -140,10 +132,11 @@ class PublibikeCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    station_id = str(entry.data[CONF_STATION_ID])
-    station_name = entry.data.get(CONF_STATION_NAME, station_id)
-    station_city = entry.data.get(CONF_STATION_CITY, "")
-    station_source = entry.data.get(CONF_STATION_SOURCE, STATION_SOURCE_PUBLIBIKE)
+    entry_data = {**entry.data, **entry.options}
+    station_id = str(entry_data[CONF_STATION_ID])
+    station_name = entry_data.get(CONF_STATION_NAME, station_id)
+    station_city = entry_data.get(CONF_STATION_CITY, "")
+    station_source = entry_data.get(CONF_STATION_SOURCE, STATION_SOURCE_PUBLIBIKE)
 
     coordinator = PublibikeCoordinator(hass, station_id, station_name, station_city, station_source)
     await coordinator.async_config_entry_first_refresh()

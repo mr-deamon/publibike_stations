@@ -4,7 +4,6 @@ DOMAIN = "publibike"
 
 API_BASE = "https://rest.publibike.ch/v1/public"
 API_ALL_STATIONS = f"{API_BASE}/all/stations"
-API_STATION_DETAIL = f"{API_BASE}/stations/{{station_id}}"
 
 DEFAULT_UPDATE_INTERVAL_SECONDS = 300  # 5 minutes
 
